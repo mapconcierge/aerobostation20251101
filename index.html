@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VTOL フライトプランナー</title>
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@3.2.1/dist/maplibre-gl.css" />
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header>
+    <h1>VTOL フライトプランナー</h1>
+    <div class="toolbar">
+      <button id="loadPlanBtn" title=".plan ファイルを読み込む">読み込み</button>
+      <button id="savePlanBtn" title="現在のプランを .plan として保存">保存</button>
+      <input type="file" id="planFileInput" accept=".plan,application/json" hidden>
+    </div>
+  </header>
+  <main>
+    <section class="controls" aria-label="フライトプラン設定">
+      <h2>ウェイポイント管理</h2>
+      <div class="control-group">
+        <label for="newWaypointType">新規ウェイポイント種別</label>
+        <select id="newWaypointType">
+          <option value="takeoff">離陸地点</option>
+          <option value="transition_to_fixed">固定翼移行地点</option>
+          <option value="transit">経由地点</option>
+          <option value="transition_to_rotary">回転翼移行地点</option>
+          <option value="landing">着陸地点</option>
+        </select>
+      </div>
+      <div class="control-group">
+        <label for="defaultAltitude">新規ウェイポイント高度 (m)</label>
+        <input type="number" id="defaultAltitude" value="60" min="0" step="5">
+      </div>
+      <p class="hint">※マップをクリックすると選択した種別のウェイポイントが追加されます。</p>
+      <div id="waypointList" class="waypoint-list" aria-live="polite"></div>
+    </section>
+    <section class="map-panel" aria-label="地図と地形断面">
+      <div class="map-toolbar">
+        <button id="toggleFullscreenBtn" aria-pressed="false">地図を最大化</button>
+      </div>
+      <div id="map" class="map"></div>
+      <div id="profileContainer" class="profile-container">
+        <h2>地形断面</h2>
+        <canvas id="profileCanvas" width="800" height="200" aria-label="地形断面図"></canvas>
+      </div>
+    </section>
+  </main>
+  <footer>
+    <p>すべての処理はブラウザ内で完結します。標高データ提供: 国土地理院</p>
+  </footer>
+  <script src="https://unpkg.com/maplibre-gl@3.2.1/dist/maplibre-gl.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/ajv@8.12.0/dist/ajv7.min.js"></script>
+  <script src="app.js" type="module"></script>
+</body>
+</html>
