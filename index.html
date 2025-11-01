@@ -1,0 +1,1053 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VTOL フライトプランナー</title>
+  <link
+    href="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.css"
+    rel="stylesheet"
+  />
+  <style>
+    :root {
+      color-scheme: light dark;
+      font-family: "Segoe UI", "Hiragino Sans", system-ui, sans-serif;
+      --sidebar-width: 320px;
+      --accent: #2563eb;
+      --background: #f8fafc;
+      --border: rgba(100, 116, 139, 0.4);
+      --surface: #ffffffcc;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--background);
+      color: #0f172a;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    header {
+      padding: 0.75rem 1.5rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      align-items: center;
+      justify-content: space-between;
+      background: linear-gradient(90deg, rgba(37, 99, 235, 0.12), transparent);
+      border-bottom: 1px solid var(--border);
+      backdrop-filter: blur(14px);
+      position: sticky;
+      top: 0;
+      z-index: 1010;
+    }
+
+    header h1 {
+      margin: 0;
+      font-size: 1.25rem;
+    }
+
+    main {
+      flex: 1;
+      display: flex;
+      min-height: 0;
+    }
+
+    aside {
+      width: var(--sidebar-width);
+      max-width: 100vw;
+      padding: 1rem;
+      border-right: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.78);
+      overflow-y: auto;
+    }
+
+    aside h2 {
+      font-size: 1.1rem;
+      margin: 1rem 0 0.5rem;
+    }
+
+    aside section {
+      margin-bottom: 1.5rem;
+    }
+
+    .controls, .waypoint-form {
+      display: grid;
+      gap: 0.5rem;
+    }
+
+    label {
+      font-size: 0.85rem;
+      color: #475569;
+    }
+
+    select,
+    input[type="number"],
+    input[type="text"],
+    textarea {
+      width: 100%;
+      padding: 0.45rem 0.55rem;
+      border-radius: 0.45rem;
+      border: 1px solid var(--border);
+      font-size: 0.95rem;
+      background: #fff;
+    }
+
+    button,
+    .file-input-wrapper label {
+      border: none;
+      border-radius: 0.55rem;
+      padding: 0.55rem 0.85rem;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.1s ease, box-shadow 0.1s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      justify-content: center;
+    }
+
+    button.secondary {
+      background: rgba(30, 64, 175, 0.12);
+      color: #1e40af;
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    button:hover:not(:disabled),
+    .file-input-wrapper label:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 16px rgba(37, 99, 235, 0.25);
+    }
+
+    .map-section {
+      position: relative;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    #map-container {
+      position: relative;
+      flex: 1;
+      min-height: 320px;
+    }
+
+    #map {
+      position: absolute;
+      inset: 0;
+    }
+
+    #fullscreen-toggle {
+      position: absolute;
+      top: 0.75rem;
+      right: 0.75rem;
+      padding: 0.35rem 0.55rem;
+      z-index: 1010;
+      background: rgba(15, 23, 42, 0.65);
+      border-radius: 999px;
+      color: #fff;
+      box-shadow: 0 4px 16px rgba(15, 23, 42, 0.35);
+    }
+
+    #map-container.fullscreen {
+      position: fixed !important;
+      inset: 0 !important;
+      width: 100vw !important;
+      height: 100vh !important;
+      z-index: 2000 !important;
+    }
+
+    #map-container.fullscreen #fullscreen-toggle {
+      position: fixed;
+      top: 1rem;
+      right: 1rem;
+      z-index: 2001;
+      background: rgba(15, 23, 42, 0.85);
+    }
+
+    #elevation-panel {
+      border-top: 1px solid var(--border);
+      padding: 0.75rem 1rem 1.25rem;
+      background: rgba(255, 255, 255, 0.92);
+      backdrop-filter: blur(8px);
+    }
+
+    #elevation-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.5rem;
+    }
+
+    #elevation-canvas {
+      width: 100%;
+      height: 180px;
+      border-radius: 0.65rem;
+      background: linear-gradient(180deg, rgba(37, 99, 235, 0.05), rgba(37, 99, 235, 0));
+    }
+
+    #waypoint-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.65rem;
+    }
+
+    .waypoint-card {
+      padding: 0.75rem;
+      border-radius: 0.65rem;
+      border: 1px solid var(--border);
+      background: rgba(255, 255, 255, 0.95);
+      box-shadow: 0 12px 24px rgba(15, 23, 42, 0.08);
+      display: grid;
+      gap: 0.5rem;
+    }
+
+    .waypoint-card header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border: none;
+      background: transparent;
+      padding: 0;
+    }
+
+    .waypoint-card header h3 {
+      margin: 0;
+      font-size: 1rem;
+    }
+
+    .waypoint-actions {
+      display: flex;
+      gap: 0.35rem;
+    }
+
+    .pill {
+      padding: 0.25rem 0.55rem;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      background: rgba(37, 99, 235, 0.12);
+      color: #1e3a8a;
+    }
+
+    .file-input-wrapper input {
+      display: none;
+    }
+
+    .inline {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+
+    .helper-text {
+      font-size: 0.8rem;
+      color: #64748b;
+    }
+
+    .maplibregl-ctrl.maplibregl-ctrl-group {
+      border-radius: 0.75rem;
+      overflow: hidden;
+    }
+
+    .status-message {
+      font-size: 0.85rem;
+      color: #0f172a;
+      background: rgba(37, 99, 235, 0.1);
+      border: 1px solid rgba(37, 99, 235, 0.3);
+      padding: 0.5rem 0.75rem;
+      border-radius: 0.65rem;
+      margin-top: 0.5rem;
+    }
+
+    @media (max-width: 1024px) {
+      main {
+        flex-direction: column;
+      }
+
+      aside {
+        width: 100%;
+        border-right: none;
+        border-bottom: 1px solid var(--border);
+      }
+
+      .map-section {
+        min-height: 60vh;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>VTOL フライトプランナー</h1>
+    <div class="inline">
+      <div class="file-input-wrapper">
+        <label for="plan-file-input">📂 プラン読み込み</label>
+        <input type="file" id="plan-file-input" accept=".plan,application/json" />
+      </div>
+      <button id="download-plan" class="secondary">💾 プラン保存</button>
+    </div>
+  </header>
+  <main>
+    <aside>
+      <section>
+        <h2>ウェイポイント追加</h2>
+        <div class="waypoint-form">
+          <label>
+            種別
+            <select id="waypoint-type">
+              <option value="takeoff">離陸地点</option>
+              <option value="transition-to-fixed">回転翼→固定翼</option>
+              <option value="enroute">経由地点</option>
+              <option value="transition-to-vtol">固定翼→回転翼</option>
+              <option value="landing">着陸地点</option>
+            </select>
+          </label>
+          <label>
+            指定高度 (m)
+            <input type="number" id="waypoint-altitude" value="50" min="0" step="1" />
+          </label>
+          <label>
+            備考
+            <input type="text" id="waypoint-notes" placeholder="任意" />
+          </label>
+          <button id="start-adding">🛰️ 地図上に追加</button>
+          <p class="helper-text">ボタン押下後、地図上をクリックしてウェイポイントを追加します。ドラッグで位置調整が可能です。</p>
+        </div>
+      </section>
+      <section>
+        <h2>ウェイポイント一覧</h2>
+        <div id="waypoint-list"></div>
+      </section>
+      <section>
+        <h2>プラン情報</h2>
+        <div class="controls">
+          <label>
+            機体名
+            <input type="text" id="vehicle-name" placeholder="例: AeroBo VTOL" />
+          </label>
+          <label>
+            説明
+            <textarea id="plan-description" rows="3" placeholder="任意の説明を記入"></textarea>
+          </label>
+          <div class="status-message" id="status-message">準備完了。現在地取得中...</div>
+        </div>
+      </section>
+    </aside>
+    <section class="map-section">
+      <div id="map-container">
+        <div id="map"></div>
+        <button id="fullscreen-toggle" title="地図を最大化">🗖</button>
+      </div>
+      <div id="elevation-panel">
+        <div id="elevation-header">
+          <strong>地形断面</strong>
+          <span id="elevation-summary" class="helper-text">ウェイポイントを追加すると断面を計算します。</span>
+        </div>
+        <canvas id="elevation-canvas" width="1200" height="200"></canvas>
+      </div>
+    </section>
+  </main>
+
+  <script src="https://unpkg.com/maplibre-gl@3.6.2/dist/maplibre-gl.js"></script>
+  <script>
+    const WAYPOINT_TYPES = {
+      takeoff: { label: "離陸地点", color: "#16a34a", icon: "⬆" },
+      "transition-to-fixed": { label: "回転翼→固定翼", color: "#7c3aed", icon: "⇪" },
+      enroute: { label: "経由地点", color: "#2563eb", icon: "⬩" },
+      "transition-to-vtol": { label: "固定翼→回転翼", color: "#f97316", icon: "⇩" },
+      landing: { label: "着陸地点", color: "#dc2626", icon: "⬇" },
+    };
+
+    const PLAN_SCHEMA = {
+      $schema: "https://json-schema.org/draft/2020-12/schema",
+      $id: "https://aerobostation.example/vtol-plan.schema.json",
+      title: "VTOL Flight Plan",
+      type: "object",
+      required: ["schemaVersion", "planType", "waypoints"],
+      properties: {
+        schemaVersion: { const: 1 },
+        planType: { const: "VTOL" },
+        vehicle: { type: "string" },
+        description: { type: "string" },
+        createdAt: { type: "string", format: "date-time" },
+        updatedAt: { type: "string", format: "date-time" },
+        waypoints: {
+          type: "array",
+          minItems: 1,
+          items: {
+            type: "object",
+            required: ["id", "type", "position"],
+            properties: {
+              id: { type: "string" },
+              name: { type: "string" },
+              type: { enum: Object.keys(WAYPOINT_TYPES) },
+              notes: { type: "string" },
+              hoverSeconds: { type: "number" },
+              position: {
+                type: "object",
+                required: ["lat", "lon", "alt"],
+                properties: {
+                  lat: { type: "number", minimum: -90, maximum: 90 },
+                  lon: { type: "number", minimum: -180, maximum: 180 },
+                  alt: { type: "number", minimum: -500, maximum: 10000 },
+                },
+              },
+            },
+          },
+        },
+      },
+    };
+
+    const GSI_ELEVATION_ZOOM = 14;
+    const ELEVATION_TILE_URL = (z, x, y) =>
+      `https://cyberjapandata.gsi.go.jp/xyz/dem_png/${z}/${x}/${y}.png`;
+
+    const tileCache = new Map();
+    const waypointData = [];
+    const pendingWaypoints = [];
+    let map;
+    let isAddingWaypoint = false;
+    let pathGeoJsonSource;
+    let statusTimeout;
+    let suppressStatus = false;
+
+    const mapWrapper = document.getElementById("map-container");
+    const mapContainer = document.getElementById("map");
+    const statusMessage = document.getElementById("status-message");
+    const waypointList = document.getElementById("waypoint-list");
+    const addButton = document.getElementById("start-adding");
+    const fullscreenToggle = document.getElementById("fullscreen-toggle");
+    const elevationCanvas = document.getElementById("elevation-canvas");
+    const elevationSummary = document.getElementById("elevation-summary");
+    const planFileInput = document.getElementById("plan-file-input");
+    const downloadPlanButton = document.getElementById("download-plan");
+
+    const ctx = elevationCanvas.getContext("2d");
+
+    function setStatus(message, duration = 4000) {
+      if (suppressStatus) {
+        statusMessage.textContent = message;
+        return;
+      }
+      statusMessage.textContent = message;
+      if (statusTimeout) {
+        clearTimeout(statusTimeout);
+      }
+      if (duration > 0) {
+        statusTimeout = setTimeout(() => {
+          statusMessage.textContent = "準備完了。地図を操作してフライトプランを作成してください。";
+        }, duration);
+      }
+    }
+
+    function haversineDistance(lat1, lon1, lat2, lon2) {
+      const R = 6371000;
+      const toRad = (deg) => (deg * Math.PI) / 180;
+      const dLat = toRad(lat2 - lat1);
+      const dLon = toRad(lon2 - lon1);
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(toRad(lat1)) *
+          Math.cos(toRad(lat2)) *
+          Math.sin(dLon / 2) *
+          Math.sin(dLon / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return R * c;
+    }
+
+    function getTileXY(lon, lat, zoom) {
+      const latRad = (lat * Math.PI) / 180;
+      const n = Math.pow(2, zoom);
+      const xtile = ((lon + 180) / 360) * n;
+      const ytile =
+        ((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * n;
+      return { tileX: Math.floor(xtile), tileY: Math.floor(ytile), pixelX: Math.floor((xtile - Math.floor(xtile)) * 256), pixelY: Math.floor((ytile - Math.floor(ytile)) * 256) };
+    }
+
+    async function fetchElevationTile(x, y, z) {
+      const key = `${z}/${x}/${y}`;
+      if (tileCache.has(key)) {
+        return tileCache.get(key);
+      }
+      const promise = fetch(ELEVATION_TILE_URL(z, x, y))
+        .then(async (response) => {
+          if (!response.ok) {
+            throw new Error(`タイル取得に失敗しました (${response.status})`);
+          }
+          const blob = await response.blob();
+          const bitmap = await createImageBitmap(blob, {
+            colorSpaceConversion: "none",
+            premultiplyAlpha: "none",
+          });
+          const offscreen = document.createElement("canvas");
+          offscreen.width = bitmap.width;
+          offscreen.height = bitmap.height;
+          const offCtx = offscreen.getContext("2d");
+          offCtx.drawImage(bitmap, 0, 0);
+          const imageData = offCtx.getImageData(0, 0, bitmap.width, bitmap.height);
+          return imageData;
+        })
+        .catch((error) => {
+          console.error("標高タイルの取得に失敗", error);
+          return null;
+        });
+      tileCache.set(key, promise);
+      return promise;
+    }
+
+    async function getElevation(lon, lat) {
+      const { tileX, tileY, pixelX, pixelY } = getTileXY(lon, lat, GSI_ELEVATION_ZOOM);
+      const tile = await fetchElevationTile(tileX, tileY, GSI_ELEVATION_ZOOM);
+      if (!tile) {
+        return null;
+      }
+      const index = (pixelY * tile.width + pixelX) * 4;
+      const r = tile.data[index];
+      const g = tile.data[index + 1];
+      const b = tile.data[index + 2];
+      if ((r === 0 && g === 0 && b === 0) || (r === 128 && g === 0 && b === 0)) {
+        return null;
+      }
+      const elevation = (r * 256 + g + b / 256) - 10000;
+      return Number.isFinite(elevation) ? elevation : null;
+    }
+
+    function refreshMarkerPopup(wp) {
+      wp.marker.setPopup(createMarkerPopup(wp));
+    }
+
+    function updateWaypointList() {
+      waypointList.innerHTML = "";
+      waypointData.forEach((wp, index) => {
+        const card = document.createElement("div");
+        card.className = "waypoint-card";
+        const header = document.createElement("header");
+        const title = document.createElement("h3");
+        title.textContent = `${index + 1}. ${WAYPOINT_TYPES[wp.type].label}`;
+        const typePill = document.createElement("span");
+        typePill.className = "pill";
+        typePill.style.background = WAYPOINT_TYPES[wp.type].color + "22";
+        typePill.style.color = WAYPOINT_TYPES[wp.type].color;
+        typePill.textContent = WAYPOINT_TYPES[wp.type].icon + " " + wp.type;
+        header.appendChild(title);
+        header.appendChild(typePill);
+        card.appendChild(header);
+
+        const coordinate = document.createElement("div");
+        coordinate.className = "helper-text";
+        coordinate.textContent = `緯度 ${wp.lat.toFixed(6)} / 経度 ${wp.lon.toFixed(6)}`;
+        card.appendChild(coordinate);
+
+        const altitudeLabel = document.createElement("label");
+        altitudeLabel.textContent = "高度 (m)";
+        const altitudeInput = document.createElement("input");
+        altitudeInput.type = "number";
+        altitudeInput.value = wp.altitude;
+        altitudeInput.min = 0;
+        altitudeInput.step = 1;
+        altitudeInput.addEventListener("change", () => {
+          wp.altitude = Number(altitudeInput.value);
+          wp.marker.getElement().dataset.altitude = wp.altitude;
+          updateFlightPath();
+          refreshMarkerPopup(wp);
+        });
+        altitudeLabel.appendChild(altitudeInput);
+        card.appendChild(altitudeLabel);
+
+        const notesLabel = document.createElement("label");
+        notesLabel.textContent = "備考";
+        const notesInput = document.createElement("input");
+        notesInput.type = "text";
+        notesInput.value = wp.notes || "";
+        notesInput.addEventListener("change", () => {
+          wp.notes = notesInput.value;
+          refreshMarkerPopup(wp);
+        });
+        notesLabel.appendChild(notesInput);
+        card.appendChild(notesLabel);
+
+        const actionRow = document.createElement("div");
+        actionRow.className = "waypoint-actions";
+        const focusBtn = document.createElement("button");
+        focusBtn.type = "button";
+        focusBtn.className = "secondary";
+        focusBtn.textContent = "📍 フォーカス";
+        focusBtn.addEventListener("click", () => {
+          map.flyTo({ center: [wp.lon, wp.lat], zoom: 18 });
+          wp.marker.togglePopup();
+        });
+        const removeBtn = document.createElement("button");
+        removeBtn.type = "button";
+        removeBtn.textContent = "🗑️ 削除";
+        removeBtn.style.background = "#dc2626";
+        removeBtn.addEventListener("click", () => {
+          wp.marker.remove();
+          waypointData.splice(index, 1);
+          updateWaypointList();
+          updateFlightPath();
+          setStatus("ウェイポイントを削除しました。", 2000);
+        });
+        actionRow.appendChild(focusBtn);
+        actionRow.appendChild(removeBtn);
+        card.appendChild(actionRow);
+
+        waypointList.appendChild(card);
+      });
+    }
+
+    function createMarkerElement(type, altitude) {
+      const wrapper = document.createElement("div");
+      wrapper.className = "waypoint-marker";
+      wrapper.style.background = WAYPOINT_TYPES[type].color;
+      wrapper.style.color = "#fff";
+      wrapper.style.padding = "6px";
+      wrapper.style.borderRadius = "50%";
+      wrapper.style.display = "flex";
+      wrapper.style.alignItems = "center";
+      wrapper.style.justifyContent = "center";
+      wrapper.style.width = "30px";
+      wrapper.style.height = "30px";
+      wrapper.style.boxShadow = "0 0 0 3px rgba(255,255,255,0.7)";
+      wrapper.style.fontSize = "16px";
+      wrapper.dataset.altitude = altitude;
+      wrapper.textContent = WAYPOINT_TYPES[type].icon;
+      return wrapper;
+    }
+
+    function createMarkerPopup(wp) {
+      const div = document.createElement("div");
+      div.innerHTML = `
+        <strong>${WAYPOINT_TYPES[wp.type].label}</strong><br />
+        高度: ${wp.altitude} m<br />
+        緯度: ${wp.lat.toFixed(6)}<br />
+        経度: ${wp.lon.toFixed(6)}
+        ${wp.notes ? `<br />備考: ${wp.notes}` : ""}
+      `;
+      return new maplibregl.Popup({ offset: 12 }).setDOMContent(div);
+    }
+
+    function updateFlightPath() {
+      if (!pathGeoJsonSource) return;
+      const coordinates = waypointData.map((wp) => [wp.lon, wp.lat]);
+      pathGeoJsonSource.setData({
+        type: "FeatureCollection",
+        features: coordinates.length
+          ? [
+              {
+                type: "Feature",
+                geometry: { type: "LineString", coordinates },
+                properties: {},
+              },
+            ]
+          : [],
+      });
+      updateElevationProfile();
+    }
+
+    function samplePath(samplesPerSegment = 60) {
+      const samples = [];
+      if (waypointData.length < 2) {
+        return samples;
+      }
+      for (let i = 0; i < waypointData.length - 1; i++) {
+        const start = waypointData[i];
+        const end = waypointData[i + 1];
+        const segmentDistance = haversineDistance(start.lat, start.lon, end.lat, end.lon);
+        const steps = Math.max(2, Math.ceil(segmentDistance / 50));
+        for (let s = 0; s < steps; s++) {
+          const t = s / steps;
+          samples.push({
+            lon: start.lon + (end.lon - start.lon) * t,
+            lat: start.lat + (end.lat - start.lat) * t,
+            distance: 0,
+          });
+        }
+      }
+      const last = waypointData[waypointData.length - 1];
+      samples.push({ lon: last.lon, lat: last.lat, distance: 0 });
+      let cumulative = 0;
+      for (let i = 0; i < samples.length; i++) {
+        if (i === 0) {
+          samples[i].distance = 0;
+        } else {
+          const prev = samples[i - 1];
+          const current = samples[i];
+          cumulative += haversineDistance(prev.lat, prev.lon, current.lat, current.lon);
+          samples[i].distance = cumulative;
+        }
+      }
+      return samples;
+    }
+
+    async function updateElevationProfile() {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, elevationCanvas.width, elevationCanvas.height);
+      if (waypointData.length < 2) {
+        elevationSummary.textContent = "ウェイポイントが2点以上必要です。";
+        return;
+      }
+      elevationSummary.textContent = "標高データ取得中...";
+      const samples = samplePath();
+      if (!samples.length) {
+        elevationSummary.textContent = "標高データを計算できませんでした。";
+        return;
+      }
+      const elevations = [];
+      for (const sample of samples) {
+        const elevation = await getElevation(sample.lon, sample.lat);
+        elevations.push(elevation);
+      }
+      const validElevations = elevations.filter((e) => e !== null);
+      if (!validElevations.length) {
+        elevationSummary.textContent = "標高データを取得できませんでした。";
+        return;
+      }
+      const minElev = Math.min(...validElevations);
+      const maxElev = Math.max(...validElevations);
+      const totalDistance = samples[samples.length - 1].distance;
+
+      elevationCanvas.width = elevationCanvas.clientWidth * window.devicePixelRatio;
+      elevationCanvas.height = elevationCanvas.clientHeight * window.devicePixelRatio;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+
+      ctx.fillStyle = "rgba(148, 163, 184, 0.15)";
+      ctx.fillRect(0, 0, elevationCanvas.clientWidth, elevationCanvas.clientHeight);
+
+      ctx.beginPath();
+      ctx.moveTo(0, elevationCanvas.clientHeight);
+      for (let i = 0; i < samples.length; i++) {
+        const x = (samples[i].distance / totalDistance) * elevationCanvas.clientWidth;
+        const elevation = elevations[i] ?? minElev;
+        const normalized = (elevation - minElev) / (maxElev - minElev || 1);
+        const y = elevationCanvas.clientHeight - normalized * (elevationCanvas.clientHeight - 20) - 10;
+        ctx.lineTo(x, y);
+      }
+      ctx.lineTo(elevationCanvas.clientWidth, elevationCanvas.clientHeight);
+      ctx.closePath();
+      ctx.fillStyle = "rgba(37, 99, 235, 0.3)";
+      ctx.fill();
+
+      ctx.beginPath();
+      for (let i = 0; i < samples.length; i++) {
+        const x = (samples[i].distance / totalDistance) * elevationCanvas.clientWidth;
+        const elevation = elevations[i] ?? minElev;
+        const normalized = (elevation - minElev) / (maxElev - minElev || 1);
+        const y = elevationCanvas.clientHeight - normalized * (elevationCanvas.clientHeight - 20) - 10;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.strokeStyle = "#1d4ed8";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      ctx.fillStyle = "#0f172a";
+      ctx.font = "12px 'Segoe UI', sans-serif";
+      ctx.fillText(`距離: ${(totalDistance / 1000).toFixed(2)} km`, 12, 18);
+      ctx.fillText(`標高: ${minElev.toFixed(1)} m - ${maxElev.toFixed(1)} m`, 12, 34);
+
+      elevationSummary.textContent = `総距離 ${(totalDistance / 1000).toFixed(2)} km / 標高範囲 ${minElev.toFixed(1)} m - ${maxElev.toFixed(1)} m`;
+    }
+
+    function attachMarkerEvents(wp) {
+      wp.marker.on("dragend", () => {
+        const lngLat = wp.marker.getLngLat();
+        wp.lon = lngLat.lng;
+        wp.lat = lngLat.lat;
+        updateWaypointList();
+        updateFlightPath();
+        refreshMarkerPopup(wp);
+        setStatus(`${WAYPOINT_TYPES[wp.type].label} の位置を更新しました。`, 2000);
+      });
+      wp.marker.setPopup(createMarkerPopup(wp));
+    }
+
+    function addWaypoint(lon, lat, type, altitude, notes = "", id = null) {
+      if (!map) {
+        pendingWaypoints.push({ lon, lat, type, altitude, notes, id });
+        return;
+      }
+      const element = createMarkerElement(type, altitude);
+      const marker = new maplibregl.Marker({ element, draggable: true })
+        .setLngLat([lon, lat])
+        .addTo(map);
+      const waypoint = {
+        id: id || `wp-${Date.now()}-${Math.random().toString(16).slice(2, 6)}`,
+        type,
+        altitude,
+        notes,
+        lon,
+        lat,
+        marker,
+      };
+      attachMarkerEvents(waypoint);
+      waypointData.push(waypoint);
+      updateWaypointList();
+      updateFlightPath();
+      setStatus(`${WAYPOINT_TYPES[type].label} を追加しました。`, 2000);
+    }
+
+    function enableAddMode() {
+      isAddingWaypoint = true;
+      addButton.textContent = "🖱️ 地図をクリック";
+      addButton.disabled = true;
+      setStatus("地図をクリックしてウェイポイントを配置してください。", 4000);
+    }
+
+    function disableAddMode() {
+      isAddingWaypoint = false;
+      addButton.textContent = "🛰️ 地図上に追加";
+      addButton.disabled = false;
+    }
+
+    function validatePlan(plan) {
+      if (plan.schemaVersion !== 1 || plan.planType !== "VTOL" || !Array.isArray(plan.waypoints)) {
+        return false;
+      }
+      for (const wp of plan.waypoints) {
+        if (!wp || typeof wp !== "object") return false;
+        if (!wp.id || !WAYPOINT_TYPES[wp.type]) return false;
+        if (!wp.position) return false;
+        const { lat, lon, alt } = wp.position;
+        if (
+          typeof lat !== "number" ||
+          typeof lon !== "number" ||
+          typeof alt !== "number" ||
+          lat < -90 ||
+          lat > 90 ||
+          lon < -180 ||
+          lon > 180
+        ) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    function clearPlan() {
+      waypointData.forEach((wp) => wp.marker.remove());
+      waypointData.splice(0, waypointData.length);
+      updateWaypointList();
+      updateFlightPath();
+    }
+
+    async function loadPlan(plan) {
+      clearPlan();
+      document.getElementById("vehicle-name").value = plan.vehicle || "";
+      document.getElementById("plan-description").value = plan.description || "";
+      suppressStatus = true;
+      for (const wp of plan.waypoints) {
+        addWaypoint(
+          wp.position.lon,
+          wp.position.lat,
+          wp.type,
+          wp.position.alt,
+          wp.notes || "",
+          wp.id
+        );
+      }
+      suppressStatus = false;
+      if (waypointData.length) {
+        const bounds = new maplibregl.LngLatBounds();
+        waypointData.forEach((wp) => bounds.extend([wp.lon, wp.lat]));
+        map.fitBounds(bounds, { padding: 80, animate: true });
+      }
+      setStatus("プランを読み込みました。", 2000);
+    }
+
+    function exportPlan() {
+      const plan = {
+        $schema: PLAN_SCHEMA.$id,
+        schemaVersion: 1,
+        planType: "VTOL",
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        vehicle: document.getElementById("vehicle-name").value || "",
+        description: document.getElementById("plan-description").value || "",
+        waypoints: waypointData.map((wp, idx) => ({
+          id: wp.id,
+          name: `${idx + 1}-${WAYPOINT_TYPES[wp.type].label}`,
+          type: wp.type,
+          notes: wp.notes || "",
+          position: {
+            lat: wp.lat,
+            lon: wp.lon,
+            alt: wp.altitude,
+          },
+          hoverSeconds: wp.type.includes("transition") ? 10 : 0,
+        })),
+      };
+      return plan;
+    }
+
+    function downloadPlan() {
+      if (!waypointData.length) {
+        setStatus("ウェイポイントがありません。", 2500);
+        return;
+      }
+      const plan = exportPlan();
+      const blob = new Blob([JSON.stringify(plan, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+      a.href = url;
+      a.download = `vtol-flight-plan-${timestamp}.plan`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      setStatus("プランをダウンロードしました。", 2000);
+    }
+
+    function initMap(center) {
+      map = new maplibregl.Map({
+        container: "map",
+        style: "https://demotiles.maplibre.org/style.json",
+        center,
+        zoom: 17,
+        attributionControl: true,
+      });
+
+      map.addControl(new maplibregl.NavigationControl());
+      map.on("load", () => {
+        map.addSource("flight-path", {
+          type: "geojson",
+          data: { type: "FeatureCollection", features: [] },
+        });
+        pathGeoJsonSource = map.getSource("flight-path");
+        map.addLayer({
+          id: "flight-path-line",
+          type: "line",
+          source: "flight-path",
+          paint: {
+            "line-color": "#1d4ed8",
+            "line-width": 3,
+            "line-dasharray": [1.5, 1],
+          },
+        });
+        map.addLayer({
+          id: "flight-path-glow",
+          type: "line",
+          source: "flight-path",
+          paint: {
+            "line-color": "#93c5fd",
+            "line-width": 8,
+            "line-opacity": 0.35,
+          },
+        });
+        if (pendingWaypoints.length) {
+          suppressStatus = true;
+          const queued = pendingWaypoints.splice(0, pendingWaypoints.length);
+          for (const pending of queued) {
+            addWaypoint(
+              pending.lon,
+              pending.lat,
+              pending.type,
+              pending.altitude,
+              pending.notes,
+              pending.id || null
+            );
+          }
+          suppressStatus = false;
+        }
+      });
+
+      map.on("click", (event) => {
+        if (!isAddingWaypoint) return;
+        const type = document.getElementById("waypoint-type").value;
+        const altitude = Number(document.getElementById("waypoint-altitude").value) || 0;
+        const notes = document.getElementById("waypoint-notes").value;
+        addWaypoint(event.lngLat.lng, event.lngLat.lat, type, altitude, notes);
+        document.getElementById("waypoint-notes").value = "";
+        disableAddMode();
+      });
+    }
+
+    function requestInitialLocation() {
+      const fallback = [139.752106, 35.678175];
+      if (!navigator.geolocation) {
+        initMap(fallback);
+        setStatus("Geolocation API が利用できません。首相官邸を中心に表示します。", 4000);
+        return;
+      }
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const { latitude, longitude } = position.coords;
+          initMap([longitude, latitude]);
+          setStatus("現在地を中心に地図を初期化しました。", 3000);
+        },
+        (error) => {
+          console.warn("現在地を取得できませんでした", error);
+          initMap(fallback);
+          setStatus("現在地を取得できなかったため、首相官邸を中心に表示します。", 4000);
+        },
+        { enableHighAccuracy: true, timeout: 7000 }
+      );
+    }
+
+    window.addEventListener("resize", () => {
+      if (map) {
+        map.resize();
+        updateElevationProfile();
+      }
+    });
+
+    addButton.addEventListener("click", () => {
+      enableAddMode();
+    });
+
+    fullscreenToggle.addEventListener("click", () => {
+      if (!mapWrapper.classList.contains("fullscreen")) {
+        mapWrapper.classList.add("fullscreen");
+        fullscreenToggle.textContent = "🗗";
+      } else {
+        mapWrapper.classList.remove("fullscreen");
+        fullscreenToggle.textContent = "🗖";
+      }
+      map.resize();
+      updateElevationProfile();
+    });
+
+    downloadPlanButton.addEventListener("click", downloadPlan);
+
+    planFileInput.addEventListener("change", async (event) => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const plan = JSON.parse(text);
+        if (!validatePlan(plan)) {
+          throw new Error("JSON スキーマに準拠していません。");
+        }
+        await loadPlan(plan);
+        setStatus(`${file.name} を読み込みました。`, 2500);
+      } catch (error) {
+        console.error(error);
+        setStatus("プランファイルの読み込みに失敗しました。", 4000);
+      } finally {
+        planFileInput.value = "";
+      }
+    });
+
+    document.addEventListener("DOMContentLoaded", () => {
+      requestInitialLocation();
+    });
+  </script>
+</body>
+</html>
