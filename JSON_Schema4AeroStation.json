@@ -1,0 +1,267 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.org/schemas/qgc-plan-vtol.schema.json",
+  "title": "QGroundControl PLAN (VTOL-capable) schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["fileType", "version", "groundStation", "mission"],
+  "properties": {
+    "fileType": {
+      "const": "Plan",
+      "description": "File envelope type"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Envelope version (commonly 1)"
+    },
+    "groundStation": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Producer software (e.g., 'QGroundControl')"
+    },
+    "mission": { "$ref": "#/$defs/mission" },
+    "geoFence": { "$ref": "#/$defs/geoFence" },
+    "rallyPoints": { "$ref": "#/$defs/rallyPoints" }
+  },
+
+  "$defs": {
+    "latitude": {
+      "type": "number",
+      "minimum": -90,
+      "maximum": 90
+    },
+    "longitude": {
+      "type": "number",
+      "minimum": -180,
+      "maximum": 180
+    },
+    "altitude": {
+      "type": "number"
+    },
+    "latlon": {
+      "type": "array",
+      "prefixItems": [
+        { "$ref": "#/$defs/latitude" },
+        { "$ref": "#/$defs/longitude" }
+      ],
+      "items": false,
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "homePosition": {
+      "type": "array",
+      "prefixItems": [
+        { "$ref": "#/$defs/latitude" },
+        { "$ref": "#/$defs/longitude" },
+        { "$ref": "#/$defs/altitude" }
+      ],
+      "items": false,
+      "minItems": 3,
+      "maxItems": 3
+    },
+
+    "mission": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "items"],
+      "properties": {
+        "version": { "type": "integer", "minimum": 1 },
+        "firmwareType": { "type": "integer", "minimum": 0 },
+        "vehicleType": { "type": "integer", "minimum": 0 },
+        "cruiseSpeed": { "type": "number" },
+        "hoverSpeed": { "type": "number" },
+        "plannedHomePosition": { "$ref": "#/$defs/homePosition" },
+        "items": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "oneOf": [
+              { "$ref": "#/$defs/simpleItem" },
+              { "$ref": "#/$defs/complexItem" }
+            ]
+          }
+        }
+      }
+    },
+
+    "simpleItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "doJumpId", "autoContinue", "command", "frame", "params"],
+      "properties": {
+        "type": { "const": "SimpleItem" },
+        "doJumpId": { "type": "integer", "minimum": 0 },
+        "autoContinue": { "type": "boolean" },
+
+        "command": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "MAV_CMD numeric ID (e.g., 16 waypoint, 84 VTOL_TAKEOFF, 85 VTOL_LAND, 206 camera trigger, etc.)"
+        },
+        "frame": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "MAV_FRAME numeric ID"
+        },
+
+        "params": {
+          "type": "array",
+          "minItems": 7,
+          "maxItems": 7,
+          "items": {
+            "anyOf": [
+              { "type": "number" },
+              { "type": "null" }
+            ]
+          },
+          "description": "MAVLink-style param1..param7 (param[4]=lat, [5]=lon, [6]=alt is common for navigation)"
+        },
+
+        "Altitude": { "type": "number" },
+        "AltitudeMode": { "type": "integer" },
+        "AMSLAltAboveTerrain": {
+          "anyOf": [
+            { "type": "number" },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+
+    "complexItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "complexItemType", "version"],
+      "properties": {
+        "type": { "const": "ComplexItem" },
+        "complexItemType": {
+          "type": "string",
+          "enum": ["survey"],
+          "description": "Supported complex item type(s). Extend enum if you add more."
+        },
+        "version": { "type": "integer", "minimum": 1 },
+
+        "angle": { "type": "number" },
+        "entryLocation": { "type": "integer" },
+        "flyAlternateTransects": { "type": "boolean" },
+        "splitConcavePolygons": { "type": "boolean" },
+
+        "polygon": {
+          "type": "array",
+          "minItems": 3,
+          "items": { "$ref": "#/$defs/latlon" },
+          "description": "Survey boundary polygon"
+        },
+
+        "TransectStyleComplexItem": { "$ref": "#/$defs/transectStyleComplexItem" }
+      }
+    },
+
+    "transectStyleComplexItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "CameraCalc"],
+      "properties": {
+        "version": { "type": "integer", "minimum": 1 },
+
+        "CameraCalc": { "$ref": "#/$defs/cameraCalc" },
+
+        "Items": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/simpleItem" },
+          "description": "Expanded execution sequence for the survey (waypoints/commands)"
+        },
+
+        "CameraShots": { "type": "integer", "minimum": 0 },
+        "CameraTriggerInTurnAround": { "type": "boolean" },
+        "FollowTerrain": { "type": "boolean" },
+        "TurnAroundDistance": { "type": "number" },
+
+        "VisualTransectPoints": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/latlon" }
+        }
+      }
+    },
+
+    "cameraCalc": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "CameraName",
+        "FocalLength",
+        "SensorWidth",
+        "SensorHeight",
+        "ImageWidth",
+        "ImageHeight",
+        "DistanceToSurface",
+        "FrontalOverlap",
+        "SideOverlap",
+        "Landscape"
+      ],
+      "properties": {
+        "version": { "type": "integer", "minimum": 1 },
+        "CameraName": { "type": "string" },
+        "FocalLength": { "type": "number" },
+        "SensorWidth": { "type": "number" },
+        "SensorHeight": { "type": "number" },
+        "ImageWidth": { "type": "integer", "minimum": 1 },
+        "ImageHeight": { "type": "integer", "minimum": 1 },
+        "DistanceToSurface": { "type": "number" },
+        "FrontalOverlap": { "type": "number", "minimum": 0, "maximum": 100 },
+        "SideOverlap": { "type": "number", "minimum": 0, "maximum": 100 },
+        "AdjustedFootprintFrontal": { "type": "number" },
+        "AdjustedFootprintSide": { "type": "number" },
+        "ImageDensity": { "type": "number" },
+        "Landscape": { "type": "boolean" },
+        "MinTriggerInterval": { "type": "number" },
+        "ValueSetIsDistance": { "type": "boolean" }
+      }
+    },
+
+    "geoFence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "circles", "polygons"],
+      "properties": {
+        "version": { "type": "integer", "minimum": 1 },
+        "circles": {
+          "type": "array",
+          "items": { "type": "object" },
+          "description": "Circle fences (empty or tool-specific objects). Keep strictness low unless you formalize a circle schema."
+        },
+        "polygons": {
+          "type": "array",
+          "items": { "type": "array", "items": { "$ref": "#/$defs/latlon" } },
+          "description": "Polygon fences (array of polygons)."
+        }
+      }
+    },
+
+    "rallyPoints": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "points"],
+      "properties": {
+        "version": { "type": "integer", "minimum": 1 },
+        "points": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["latitude", "longitude", "altitude"],
+            "properties": {
+              "latitude": { "$ref": "#/$defs/latitude" },
+              "longitude": { "$ref": "#/$defs/longitude" },
+              "altitude": { "$ref": "#/$defs/altitude" }
+            }
+          },
+          "description": "Rally (emergency) points; many plans leave this empty."
+        }
+      }
+    }
+  }
+}
